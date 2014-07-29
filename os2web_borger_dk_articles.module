@@ -7,6 +7,12 @@
 include_once('os2web_borger_dk_articles.features.inc');
 
 /**
+ * Text formats
+ */
+define('BORGERDK_TEXT_FORMAT_PLAIN', variable_get('os2web_borger_dk_articles_text_format_plain', 'plain_text'));
+define('BORGERDK_TEXT_FORMAT_HTML', variable_get('os2web_borger_dk_articles_text_format_html', 'full_html'));
+
+/**
  * Implements hook_menu().
  */
 function os2web_borger_dk_articles_menu() {
@@ -31,9 +37,8 @@ function os2web_borger_dk_articles_menu() {
     'file' => 'os2web_borger_dk_articles.admin.inc',
   );
 
-  $items['import/borger-dk-article/autocomplete/%'] = array(
+  $items['import/borger-dk-article/autocomplete'] = array(
     'page callback' => '_os2web_borger_dk_articles_autocomplete_callback',
-    'page arguments' => array(3),
     'access arguments' => array('create borger_dk_article content'),
     'type' => MENU_CALLBACK,
   );
@@ -48,8 +53,13 @@ function _os2web_borger_dk_articles_autocomplete_callback($string = '') {
   $matches = array();
 
   if ($string) {
-    $result = db_query("SELECT `ArticleID`, `ArticleStatus`, `ArticleTitle` FROM {os2web_borger_dk_titles} WHERE `ArticleStatus` >= 0 AND LOWER(ArticleTitle) LIKE LOWER('" . $string . "%') LIMIT 10");
-
+    $query = db_select('os2web_borger_dk_titles', 'o')
+      ->fields('o', array('ArticleID', 'ArticleStatus', 'ArticleTitle'))
+      ->condition('o.ArticleStatus', 0, '>=')
+      ->condition('o.ArticleTitle', db_like($string) . '%', 'LIKE')
+      ->range(0, 10);    
+    $result = $query->execute();
+    
     // Add matches to $matches.
     foreach ($result as $row) {
       if ($row->ArticleStatus > 0) {
@@ -186,7 +196,7 @@ function os2web_borger_dk_articles_autocomplete_form(&$form, $form_state) {
       '#type' => 'textfield',
       '#title' => t('Borger.dk Article title'),
       '#default_value' => (isset($form_state['values']['os2web_borger_dk_article_title_text'])) ? $form_state['values']['os2web_borger_dk_article_title_text'] : '',
-      '#autocomplete_path' => 'import/borger-dk-article/autocomplete/%',
+      '#autocomplete_path' => 'import/borger-dk-article/autocomplete',
       '#size' => 60,
       '#maxlength' => 255,
       '#attributes' => array('class' => array('auto_submit')),
@@ -276,21 +286,21 @@ function os2web_borger_dk_articles_after_build($form, &$form_state) {
     // non-editable in the admin-editable-settings.
     $value_editable = variable_get('os2web_borger_dk_articles_editable', array(NULL));
     foreach ($value_editable as $type => $editable) {
-      if (empty($editable) || !empty($locked_os2web_types[$type])) {
+      if ((empty($editable) || !empty($locked_os2web_types[$type])) && !empty($form[$type])) {
         os2web_borger_dk_articles_fix_disabled($form[$type]);
       }
       if ($type == 'field_os2web_byline' && !empty($form[$type])) {
-        $form[$type]['#format'] = 'plaintext';
+        $form[$type]['#format'] = BORGERDK_TEXT_FORMAT_PLAIN;
       }
     }
 
     // Finally we lock the special types.
     foreach ($locked_os2web_types as $type => $locked) {
       if (isset($form[$type])) {
-        $form[$type]['#required'] = 0;
-        $form[$type]['und']['#required'] = 0;
-        $form[$type]['und'][0]['#required'] = 0;
-        $form[$type]['und'][0]['value']['#required'] = 0;
+        $form[$type]['#required'] = FALSE;
+        $form[$type]['und']['#required'] = FALSE;
+        $form[$type]['und'][0]['#required'] = FALSE;
+        $form[$type]['und'][0]['value']['#required'] = FALSE;
         os2web_borger_dk_articles_fix_disabled($form[$type]);
       }
     }
@@ -300,13 +310,18 @@ function os2web_borger_dk_articles_after_build($form, &$form_state) {
     // form-field except the locked types.
     $data = field_info_instances('node', 'borger_dk_article');
     foreach ($data as $type => $item) {
-      unset($form[$type]);
+      $form[$type]['#access'] = FALSE;
     }
-    unset($form['title']);
+    $form['field_os2web_borger_dk_url']['#required'] = FALSE;
+    $form['field_os2web_borger_dk_url']['und']['#required'] = FALSE;
+    $form['field_os2web_borger_dk_url']['und'][0]['#required'] = FALSE;
+    $form['field_os2web_borger_dk_url']['und'][0]['value']['#required'] = FALSE;
+    $form['title']['#required'] = FALSE;
+    $form['title']['#access'] = FALSE;
 
     // TODO: Move this to the module-feature, and delete from this location.
     if (isset($form['path']['pathauto']['#default_value'])) {
-      $form['path']['pathauto']['#checked'] = 0;
+      $form['path']['pathauto']['#checked'] = FALSE;
     }
     $form['status'] = 0;
     $form['promote'] = 0;
@@ -668,13 +683,13 @@ function os2web_borger_dk_articles_node_submit(&$node, $form, &$form_state) {
       $node->field_os2web_shortlist['und'][0]['safe_value']     = (!empty($article['huskeliste'])) ? $article['huskeliste'] : '';
       $node->field_os2web_recommended['und'][0]['safe_value']   = (!empty($article['anbefaler'])) ? $article['anbefaler'] : '';
 
-      $node->body['und'][0]['format']                     = 'full_html';
-      $node->field_os2web_header['und'][0]['format']      = 'full_html';
-      $node->field_os2web_selfservice['und'][0]['format'] = 'full_html';
-      $node->field_os2web_byline['und'][0]['format']      = 'plaintext';
-      $node->field_os2web_legislation['und'][0]['format'] = 'full_html';
-      $node->field_os2web_shortlist['und'][0]['format']   = 'full_html';
-      $node->field_os2web_recommended['und'][0]['format'] = 'full_html';
+      $node->body['und'][0]['format']                     = BORGERDK_TEXT_FORMAT_HTML;
+      $node->field_os2web_header['und'][0]['format']      = BORGERDK_TEXT_FORMAT_HTML;
+      $node->field_os2web_selfservice['und'][0]['format'] = BORGERDK_TEXT_FORMAT_HTML;
+      $node->field_os2web_byline['und'][0]['format']      = BORGERDK_TEXT_FORMAT_PLAIN;
+      $node->field_os2web_legislation['und'][0]['format'] = BORGERDK_TEXT_FORMAT_HTML;
+      $node->field_os2web_shortlist['und'][0]['format']   = BORGERDK_TEXT_FORMAT_HTML;
+      $node->field_os2web_recommended['und'][0]['format'] = BORGERDK_TEXT_FORMAT_HTML;
 
       $field_settings = $form_state['values']['field_settings'];
 
@@ -1095,31 +1110,31 @@ function _os2web_borger_dk_articles_update_node_content($nid, $article) {
 
   $node->body['und'][0]['value']                          = $body;
   $node->body['und'][0]['safe_value']                     = $body;
-  $node->body['und'][0]['format']                         = 'full_html';
+  $node->body['und'][0]['format']                         = BORGERDK_TEXT_FORMAT_HTML;
 
   $node->field_os2web_byline['und'][0]['value']           = (!empty($article['byline'])) ? $article['byline'] : '';
   $node->field_os2web_byline['und'][0]['safe_value']      = (!empty($article['byline'])) ? $article['byline'] : '';
-  $node->field_os2web_byline['und'][0]['format']          = 'plaintext';
+  $node->field_os2web_byline['und'][0]['format']          = BORGERDK_TEXT_FORMAT_PLAIN;
 
   $node->field_os2web_header['und'][0]['value']           = (!empty($article['header'])) ? $article['header'] : '';
   $node->field_os2web_header['und'][0]['safe_value']      = (!empty($article['header'])) ? $article['header'] : '';
-  $node->field_os2web_header['und'][0]['format']          = 'full_html';
+  $node->field_os2web_header['und'][0]['format']          = BORGERDK_TEXT_FORMAT_HTML;
 
   $node->field_os2web_selfservice['und'][0]['value']      = (!empty($article['selvbetjeningslinks'])) ? $article['selvbetjeningslinks'] : '';
   $node->field_os2web_selfservice['und'][0]['safe_value'] = (!empty($article['selvbetjeningslinks'])) ? $article['selvbetjeningslinks'] : '';
-  $node->field_os2web_selfservice['und'][0]['format']     = 'full_html';
+  $node->field_os2web_selfservice['und'][0]['format']     = BORGERDK_TEXT_FORMAT_HTML;
 
   $node->field_os2web_recommended['und'][0]['value']      = (!empty($article['anbefaler'])) ? $article['anbefaler'] : '';
   $node->field_os2web_recommended['und'][0]['safe_value'] = (!empty($article['anbefaler'])) ? $article['anbefaler'] : '';
-  $node->field_os2web_recommended['und'][0]['format']     = 'full_html';
+  $node->field_os2web_recommended['und'][0]['format']     = BORGERDK_TEXT_FORMAT_HTML;
 
   $node->field_os2web_legislation['und'][0]['value']      = (!empty($article['lovgivning'])) ? $article['lovgivning'] : '';
   $node->field_os2web_legislation['und'][0]['safe_value'] = (!empty($article['lovgivning'])) ? $article['lovgivning'] : '';
-  $node->field_os2web_legislation['und'][0]['format']     = 'full_html';
+  $node->field_os2web_legislation['und'][0]['format']     = BORGERDK_TEXT_FORMAT_HTML;
 
   $node->field_os2web_shortlist['und'][0]['value']        = (!empty($article['huskeliste'])) ? $article['huskeliste'] : '';
   $node->field_os2web_shortlist['und'][0]['safe_value']   = (!empty($article['huskeliste'])) ? $article['huskeliste'] : '';
-  $node->field_os2web_shortlist['und'][0]['format']       = 'full_html';
+  $node->field_os2web_shortlist['und'][0]['format']       = BORGERDK_TEXT_FORMAT_HTML;
 
   // Some fields from borger_dk_article can not be syncronized nor changed here.
   $node->borger_dk_article['external_id']    = $article['external_id'];
@@ -1600,39 +1615,39 @@ function _os2web_borger_dk_articles_translate_soap_fault($borgerdk_id, $faultcod
   return $error;
 }
 
+/**
+ * Checking if the webservice constraints has been reached, and in that case
+ * delaying the script.
+ */
 function _os2web_borger_dk_articles_check_webservice_constraints() {
+  $time = time();
+  
   // We start of by getting the webservice request-limits.
   $webservice_request_limit = variable_get('os2web_borger_dk_webservice_request_limit', 100);
   $webservice_time_limit = variable_get('os2web_borger_dk_webservice_time_limit', 60);
+  
   // And we keep track of the number of webservice-requests per timeperiod.
   $os2web_borger_dk_article_count_no = variable_get('os2web_borger_dk_webservice_request_counter', 0);
-  $os2web_borger_dk_article_start_time = variable_get('os2web_borger_dk_webservice_time_counter', 1970);
-  // We restart the counters if the timer is too old.
-  if ($os2web_borger_dk_article_start_time < (time() - $webservice_time_limit)) {
-    $os2web_borger_dk_article_count_no = 0;
-    $os2web_borger_dk_article_start_time = time();
-    variable_set('os2web_borger_dk_webservice_request_counter', 0);
-    variable_set('os2web_borger_dk_webservice_time_counter', time());
-  }
+  $os2web_borger_dk_article_start_time = variable_get('os2web_borger_dk_webservice_time_counter', 0);
 
+  // We restart the counters if the timer is too old.
+  if ($os2web_borger_dk_article_start_time < ($time - $webservice_time_limit)) {
+    $os2web_borger_dk_article_count_no = 0;
+    $os2web_borger_dk_article_start_time = $time;
+    variable_set('os2web_borger_dk_webservice_request_counter', $os2web_borger_dk_article_count_no);
+    variable_set('os2web_borger_dk_webservice_time_counter', $os2web_borger_dk_article_start_time);  
+  }
+  
   // Then we check if the limits has been reached, and it's time for a break.
-  if (($webservice_time_limit >= (time() - $os2web_borger_dk_article_start_time)) ||
-      ($webservice_request_limit >= $os2web_borger_dk_article_count_no) ) {
+  if (($webservice_time_limit >= ($time - $os2web_borger_dk_article_start_time)) &&
+      ($webservice_request_limit <= $os2web_borger_dk_article_count_no)) {
     // We have reached the work-load limit of 100 items per minute, and must
     // take a small break or the webservice will stop answering us.
-    sleep($webservice_time_limit - (time() - $os2web_borger_dk_article_start_time));
-
+    sleep($webservice_time_limit - ($time - $os2web_borger_dk_article_start_time));
+    
     // Then we reset/store the counters for limiting the webservice work-load.
     $os2web_borger_dk_article_count_no = 0;
     $os2web_borger_dk_article_start_time = time();
-    variable_set('os2web_borger_dk_webservice_time_counter', time());
+    variable_set('os2web_borger_dk_webservice_time_counter', $os2web_borger_dk_article_start_time);
   }
-
-  // TODO: Test this function by:
-  // 1) Increase counter by 10 instead of by 1
-  // 2) Reduce request_limit to 20 instead of 100
-  // 3) Import 3 articles within time-limit (and perhaps increase time-limit)
-  // Update the work-load item counter
-  $os2web_borger_dk_article_count_no += 1;
-  variable_set('os2web_borger_dk_webservice_request_counter', $os2web_borger_dk_article_count_no);
 }
