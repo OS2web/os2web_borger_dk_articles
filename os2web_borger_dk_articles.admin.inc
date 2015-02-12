@@ -129,6 +129,16 @@ function os2web_borger_dk_articles_settings_form($form, $form_state) {
     '#size' => 5,
     '#maxlength' => 10, 
   );
+  $municipalities = array('0' => '');
+  $municipalities += _os2web_borger_dk_articles_GetMunicipalityList();
+  $form['os2web_borger_dk_import_settings_4']['os2web_borger_dk_webservice_municipality_code'] = array(
+    '#type' => 'select',
+    '#title' => t('Municipality code'),
+    '#description' => t("The municipality code used in requests to the webservices."),
+    '#default_value' => variable_get('os2web_borger_dk_webservice_municipality_code', 0),
+    '#options' => $municipalities,
+    '#group' => 'vertical_settings_tab',
+  );
 
   $form['os2web_borger_dk_articles_settings_5'] = array(
     '#type' => 'fieldset',
