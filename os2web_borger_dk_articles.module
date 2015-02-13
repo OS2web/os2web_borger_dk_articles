@@ -59,6 +59,19 @@ function os2web_borger_dk_articles_permission() {
 }
 
 /**
+ * Implements hook_action_info().
+ */
+function os2web_borger_dk_articles_action_info() {
+  return array(
+    'os2web_borger_dk_articles_update_action' => array(
+      'type' => 'node',
+      'label' => t('Update article from borger.dk'),
+      'configurable' => FALSE,
+    ),
+  );
+}
+
+/**
  * _os2web_borger_dk_articles_autocomplete_callback().
  */
 function _os2web_borger_dk_articles_autocomplete_callback($string = '') {
@@ -532,6 +545,20 @@ function os2web_borger_dk_articles_sync_submit($form, &$form_state) {
   // Get the node->nid from the form['#node']
   $nid = $form['#node']->nid;
 
+  // Update the article
+  os2web_borger_dk_articles_update_article($nid);
+
+  drupal_set_message(t('The article has been updated with content from Borger.dk'), 'status');
+  drupal_goto('node/' . $nid . '/edit');
+}
+
+/**
+ * Update a single article with latest content from borger.dk
+ *
+ * @param int $nid
+ *   The node we are updating.
+ */
+function os2web_borger_dk_articles_update_article($nid) {
   // First we find the external_id, and last_update time for this article
   $data = db_query('SELECT external_id, last_updated FROM {os2web_borger_dk_articles} WHERE nid = :nid', array(':nid' => $nid))->fetchObject();
 
@@ -541,10 +568,6 @@ function os2web_borger_dk_articles_sync_submit($form, &$form_state) {
 
   // Now we update the node content with the fetched article content
   _os2web_borger_dk_articles_update_node_content($nid, $article);
-  // And we notify the user that the article has been updated
-  drupal_set_message(t('The article has been updated with content from Borger.dk'), 'status');
-
-  drupal_goto('node/' . $nid . '/edit');
 }
 
 /**
@@ -1721,4 +1744,22 @@ function _os2web_borger_dk_articles_GetMunicipalityList($wsdl = 'https://www.bor
   }
 
   return $municipalities;
+}
+
+/**
+ * Update a node with content from borger.dk.
+ *
+ * @param $node
+ *   A node object.
+ * @param $context
+ *   (optional) Array of additional information about what triggered the action.
+ *   Not used for this action.
+ *
+ * @ingroup actions
+ */
+function os2web_borger_dk_articles_update_action($node, $context = array()) {
+  if ($node->type == 'borger_dk_article') {
+    os2web_borger_dk_articles_update_article($node->nid);
+    watchdog('action', 'Update %title with content from borger.dk.', array('%title' => $node->title));
+  }
 }
